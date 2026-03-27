@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { parseMarkdown } from './md-to-html.js';
+import { parseMarkdown } from './md-to-xhtml.js';
 import {
   CHROME_CANDIDATES_BASIC,
   CdpConnection,
