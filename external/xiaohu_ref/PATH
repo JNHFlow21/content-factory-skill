@@ -1,0 +1,19 @@
+# xiaohu-wechat-format Reference
+
+Original: `~/.claude/skills/xiaohu-wechat-format/`（已安装）
+
+**已安装**：`git clone https://github.com/xiaohuailabs/xiaohu-wechat-format.git ~/.claude/skills/xiaohu-wechat-format`
+
+如未安装，content-factory 会自动降级使用 WeWrite 内置主题（professional-clean）。
+
+通过 subprocess 调用 `toolkit/xiaohu_wrapper.py`，不直接 import。
+
+关键脚本：
+- `scripts/format.py --input X --theme Y --no-open` → 输出 HTML
+
+可用主题（30套）：
+bauhaus, bold-blue, bold-green, bold-navy, bytedance, chinese, coffee-house,
+elegant-blue, elegant-green, elegant-navy, focus-blue, focus-gold, focus-red,
+github, ink, lavender-dream, magazine, midnight, minimal-blue, minimal-gold,
+minimal-gray, minimal-navy, minimal-red, mint-fresh, newspaper, sports, sspai,
+sunset-amber, terracotta, wechat-native

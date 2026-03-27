@@ -1,0 +1,14 @@
+# WeWrite 配置
+
+wechat:
+  appid: "wxa4bebf189a53f93a"
+  secret: "7ec3c839307c10b9c569e2aeea4cfaf4"
+  author: "AI杰瑞斯"
+
+image:
+  provider: "doubao"
+  api_key: "0dd3a45a-7279-4dc5-9cd0-d1e3254b2510"
+  model: "doubao-seedream-5-0-260128"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+
+theme: "professional-clean"
