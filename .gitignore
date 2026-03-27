@@ -4,3 +4,8 @@ __pycache__/
 *.log
 output/
 *.swp
+
+# Node dependencies (run bun install)
+platforms/twitter/scripts/node_modules/
+platforms/twitter/scripts/bun.lock
+platforms/twitter/scripts/vendor/*/node_modules/
