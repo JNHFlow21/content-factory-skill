@@ -99,12 +99,24 @@ echo "SKILL_OUTPUT: $SKILL_OUTPUT"
 
 **优先顺序**（从上到下匹配第一个）：
 
-1. **用户说"写一篇..."、"帮我写公众号文章"** → 走 **Step 0 → Step 9**（完整流程）
-2. **用户提供了 URL**（含抖音/小红书链接）→ 走 **Flow 0**（素材输入）
-3. **用户说"记录选题"** → 走 **Flow 1**
-4. **用户说"深化选题"** → 走 **Flow 2**
-5. **用户说"生成标题"** → 走 **Flow 3**
-6. **不明确** → 用 AskUserQuestion 询问
+1. **用户说"全部渠道"、"所有平台"、"一并发"** → 走 **Step 0 → Step 8ALL**（写作一次，推全部平台）
+2. **用户说"发 Twitter"、"推 X"、"发推"、"post to X"** → 走 **Step 0 → Step 8X**（只发 Twitter）
+3. **用户说"发小红书"、"post to xiaohongshu"** → 提示功能暂未实现
+4. **用户说"写一篇..."、"帮我写公众号文章"（无 Twitter/小红书字样）** → 走 **Step 0 → Step 9**（默认公众号）
+5. **用户提供了 URL**（含抖音/小红书链接）→ 走 **Flow 0**（素材输入）
+6. **用户说"记录选题"** → 走 **Flow 1**
+7. **用户说"深化选题"** → 走 **Flow 2**
+8. **用户说"生成标题"** → 走 **Flow 3**
+9. **不明确** → 用 AskUserQuestion 询问
+
+**平台路由说明**：
+
+| 触发词 | 目标平台 | 说明 |
+|--------|---------|------|
+| "全部渠道"、"所有平台"、"一并发" | 公众号 + Twitter | Step 8ALL，并行推送 |
+| "发 Twitter"、"推 X"、"发推"、"post to X" | Twitter/X 草稿箱 | Step 8X |
+| "发小红书"、"post to xiaohongshu" | 小红书 | 暂不支持，提示后续迭代 |
+| 无特定平台（默认） | 微信公众号 | Step 8（现有流程） |
 
 ---
 
@@ -927,6 +939,158 @@ EOF
 - `theme`：使用的主题
 - `media_id`：微信返回的media_id（用于后续自动拉取数据）
 - `views/likes/completion_rate`：null（Step 9 自动填充）
+
+---
+
+## Step 8X：推送 Twitter/X 草稿箱
+
+**触发条件**：用户说"发 Twitter"/"推 X"/"post to X"/"发推"
+
+**前提条件**：
+- `bun` 已安装（运行 `brew install bun` 或 `npm install -g bun`）
+- Chrome 已登录 X 账号（session 持久化）
+- `platforms/twitter/scripts` 依赖已安装：`cd platforms/twitter/scripts && bun install`
+
+**流程**：
+
+### 步骤 8X.1：生成 X Article HTML
+
+```bash
+PLATFORM_TWITTER="$HOME/.claude/skills/content-factory/platforms/twitter"
+OUTPUT_DIR="${SKILL_OUTPUT}/${SLUG}"
+ARTICLE_MD="${OUTPUT_DIR}/article.md"
+X_HTML="/tmp/x-article-${SLUG}.html"
+
+# 安装依赖（如需要）
+cd "$PLATFORM_TWITTER/scripts" && bun install 2>/dev/null || npm install 2>/dev/null || true
+
+# Markdown → X Article HTML
+bun "$PLATFORM_TWITTER/scripts/md-to-xhtml.ts" \
+  --input "$ARTICLE_MD" \
+  --output "$X_HTML"
+```
+
+### 步骤 8X.2：推送草稿箱
+
+```bash
+ARTICLE_TITLE="<文章标题（截断到70字）>"
+COVER_PNG="${OUTPUT_DIR}/cover.png"
+
+bun "$PLATFORM_TWITTER/scripts/x-article.ts" \
+  --title "$ARTICLE_TITLE" \
+  --html "$X_HTML" \
+  --cover "$COVER_PNG" \
+  --submit false
+```
+
+**重要**：
+- `--submit false`（默认）：Chrome 保持打开，用户人工审核后点 Publish
+- 不使用 `--submit true`（禁止 AI 自动发布）
+- X Article 需要 X Premium 订阅（普通账号只能发普通 tweet）
+- 公众号长文（2000字）→ X Article 长文模式 ✅
+
+### 步骤 8X.3：人工审核
+
+Chrome 自动打开，X Article 草稿已填写完毕。
+→ 用户检查：标题是否正确、封面图是否合适、正文是否完整
+→ 点击 **Publish** 发布
+
+---
+
+## Step 8.5X：写入 Twitter 发布记录
+
+记录本次 Twitter 发布（幂等机制，同 slug 跳过）：
+
+```bash
+TWITTER_HISTORY="$HOME/.claude/skills/content-factory/clients/aijerrys/history_twitter.yaml"
+mkdir -p "$(dirname "$TWITTER_HISTORY")"
+
+# 如 history_twitter.yaml 不存在则创建
+if [ ! -f "$TWITTER_HISTORY" ]; then
+  echo "articles: []" > "$TWITTER_HISTORY"
+fi
+
+python3 - "$TWITTER_HISTORY" "$SLUG" "$ARTICLE_TITLE" "$SELECTED_THEME" << 'PYEOF'
+import yaml
+from pathlib import Path
+from datetime import datetime
+
+history_file = Path(__import__('sys').argv[1])
+SLUG = __import__('sys').argv[2]
+TITLE = __import__('sys').argv[3]
+THEME = __import__('sys').argv[4]
+TODAY = datetime.now().strftime("%Y-%m-%d")
+
+with open(history_file, 'r', encoding='utf-8') as f:
+    history = yaml.safe_load(f)
+
+existing = [i for i, a in enumerate(history.get("articles", [])) if a.get("slug") == SLUG]
+if existing:
+    print(f"Twitter: slug={SLUG} 已存在，跳过写入")
+else:
+    entry = {"date": TODAY, "title": TITLE, "slug": SLUG, "theme": THEME}
+    history.setdefault("articles", []).append(entry)
+    with open(history_file, 'w', encoding='utf-8') as f:
+        yaml.dump(history, f, allow_unicode=True, default_flow_style=False)
+    print(f"Twitter: 已写入 slug={SLUG}")
+PYEOF
+```
+
+---
+
+## Step 8ALL：推送全部可用平台（并行）
+
+**触发条件**：用户说"全部渠道"、"所有平台"、"一并发"
+
+**核心逻辑**：写作只做一次，各平台并行推送各自的草稿箱。
+
+### 执行方式
+
+```bash
+# Step 8 和 Step 8X 并行执行
+# （两个推送任务互相独立，同时运行）
+
+# 1. 微信公众号推送（Step 8）
+# 已有的推送逻辑不变...
+
+# 2. Twitter/X 推送（Step 8X）
+# 已有的 Step 8X 逻辑不变...
+
+# 3. 完成后汇总报告
+echo "=== 全部渠道推送完成 ==="
+echo "✅ 微信公众号：草稿箱已推送，人工审核后发布"
+echo "✅ Twitter/X：Chrome 已打开，X Article 草稿已填入，人工审核后发布"
+```
+
+**并行执行示例（后台）**：
+
+```bash
+# 并行运行两个推送
+(
+  # 公众号推送（Step 8）
+  echo "推送微信公众号..."
+  # ... Step 8 推送代码 ...
+) &
+
+(
+  # Twitter 推送（Step 8X）
+  echo "推送 Twitter/X..."
+  # ... Step 8X 推送代码 ...
+) &
+
+wait  # 等待两个都完成
+
+echo "全部平台推送完成"
+```
+
+**结果汇总**：
+- 微信公众号：Chrome WeWrite 草稿箱 → 人工发布
+- Twitter/X：Chrome X 草稿箱 → 人工审核后点 Publish
+
+**注意**：
+- 小红书暂不支持，报告中注明"小红书推送暂未实现"
+- 任一平台推送失败不影响另一平台
+- 失败时报告具体哪个平台失败及其错误信息
 
 ---
 

@@ -1,4 +1,4 @@
-# Content Factory v2.2.2
+# Content Factory v2.3
 
 > 公众号内容生产流水线 — 从选题到推送全自动化
 
